@@ -15,7 +15,10 @@ const EditableValue = ({ value, onChange, min, max, unit }) => {
   }, [isEditing]);
 
   useEffect(() => {
-    setTempValue(value); 
+    // Sicherstellen, dass value definiert ist
+    if (value !== undefined && value !== null) {
+      setTempValue(value);
+    }
   }, [value]);
 
   const commit = () => {
@@ -50,13 +53,16 @@ const EditableValue = ({ value, onChange, min, max, unit }) => {
     );
   }
 
+  // Rundung für Anzeige
+  const displayValue = typeof value === 'number' ? (Math.round(value * 100) / 100) : 0;
+
   return (
     <span 
       onClick={() => setIsEditing(true)}
       className="text-[10px] text-gray-400 font-mono hover:text-blue-300 cursor-pointer transition-colors min-w-[30px] text-right"
       title="Klicken zum Bearbeiten"
     >
-      {Math.round(value * 100) / 100}{unit}
+      {displayValue}{unit}
     </span>
   );
 };
@@ -126,6 +132,9 @@ const ColorPicker = ({ label, value, onChange }) => {
     }
   };
 
+  // Sicherstellen, dass ein gültiger Hex-Code an den Input übergeben wird
+  const safeColor = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000';
+
   return (
     <div className="flex items-center justify-between py-0.5 h-6">
        <label className="text-[10px] font-medium text-gray-400 w-24 shrink-0 truncate">{label}</label>
@@ -151,7 +160,7 @@ const ColorPicker = ({ label, value, onChange }) => {
          )}
          <input 
             type="color" 
-            value={value} 
+            value={safeColor} 
             onChange={(e) => onChange(e.target.value)}
             className="w-8 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
          />
@@ -187,7 +196,7 @@ export default function App() {
   // --- 2. Render State (Entkoppelt für Performance) ---
   const [renderConfig, setRenderConfig] = useState({
     size: 60, thickness: 15,
-    bgColor, bgColor2, useBgGradient, fillColor,
+    bgColor: '#040066', bgColor2: '#040066', useBgGradient: false, fillColor: '#ffffff',
     scale: 0.8, gapX: 20, gapY: 20, rotation: 0,
     rowOffset: 0, waveAmp: 0, waveFreq: 0.5, gradScaleY: 0, gradRotateY: 0,
     dimensions: { width: 1200, height: 800 }
@@ -202,7 +211,9 @@ export default function App() {
         height: containerRef.current.offsetHeight
       });
     };
+    // Initial update
     updateSize();
+    
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
@@ -264,14 +275,20 @@ export default function App() {
     setFillColor(rColor());
   };
 
-  // --- Logik: Einzelelement Pfad (Basiert auf Render State) ---
+  // --- Logik: Einzelelement Pfad (Berechnung für Render State) ---
   const plusPath = useMemo(() => {
     const s = renderConfig.size / 2;
     const t = renderConfig.thickness / 2;
-    const d1 = `M ${-t} ${-s} h ${renderConfig.thickness} v ${renderConfig.size} h -${renderConfig.thickness} Z`;
-    const d2 = `M ${-s} ${-t} h ${renderConfig.size} v ${renderConfig.thickness} h -${renderConfig.size} Z`;
-    return `${d1} ${d2}`;
+    return `M ${-t} ${-s} h ${renderConfig.thickness} v ${renderConfig.size} h -${renderConfig.thickness} Z M ${-s} ${-t} h ${renderConfig.size} v ${renderConfig.thickness} h -${renderConfig.size} Z`;
   }, [renderConfig.size, renderConfig.thickness]);
+
+  // --- Logik: Einzelelement Pfad (Berechnung für Preview/UI) ---
+  // Wir berechnen dies separat, damit die Vorschau sofort reagiert und keine Template-Literals im JSX nutzt
+  const previewPath = useMemo(() => {
+    const s = size / 2;
+    const t = thickness / 2;
+    return `M ${-t} ${-s} h ${thickness} v ${size} h -${thickness} Z M ${-s} ${-t} h ${size} v ${thickness} h -${size} Z`;
+  }, [size, thickness]);
 
   // --- Logik: Raster Generierung (Basiert auf Render State) ---
   const gridItems = useMemo(() => {
@@ -293,7 +310,6 @@ export default function App() {
     const rows = Math.ceil(dimensions.height / stepY) + (extraMargin * 2);
     
     const totalItems = cols * rows;
-    // Limit leicht reduziert für bessere Performance
     const MAX_ITEMS = 1200; 
     const effectiveRows = totalItems > MAX_ITEMS ? Math.floor(MAX_ITEMS / cols) : rows;
 
@@ -317,11 +333,14 @@ export default function App() {
         const waveY = Math.sin(c * waveFreq) * waveAmp;
         y += waveY;
 
+        // Transformation vorberechnen
+        const transformStr = `translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${currentRotation.toFixed(1)}) scale(${currentScale.toFixed(2)})`;
+
         items.push(
           <use
             key={`${r}-${c}`}
             href="#plus-shape"
-            transform={`translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${currentRotation.toFixed(1)}) scale(${currentScale.toFixed(2)})`}
+            transform={transformStr}
             fill={fillColor}
           />
         );
@@ -366,6 +385,9 @@ export default function App() {
         : bgColor
   };
 
+  // ViewBox als String vorberechnen
+  const mainViewBox = `0 0 ${renderConfig.dimensions.width} ${renderConfig.dimensions.height}`;
+
   return (
     <div className="flex h-screen w-full bg-gray-950 text-white overflow-hidden font-sans selection:bg-blue-500/30">
       
@@ -406,8 +428,8 @@ export default function App() {
             <div className="h-20 w-full rounded border border-gray-700 flex items-center justify-center relative overflow-hidden transition-all duration-300"
                  style={mainStyle}>
                 <svg width="60" height="60" viewBox="-100 -100 200 200" className="drop-shadow-lg">
-                    {/* Wir berechnen hier kurz einen Pfad für die Vorschau direkt aus UI State, damit es nicht laggt */}
-                    <path d={`M ${-thickness/2} ${-size/2} h ${thickness} v ${size} h -${thickness} Z M ${-size/2} ${-thickness/2} h ${size} v ${thickness} h -${size} Z`} fill={fillColor} />
+                    {/* Pfad wird nun über Variable previewPath übergeben, nicht inline */}
+                    <path d={previewPath} fill={fillColor} />
                 </svg>
             </div>
         </div>
@@ -486,7 +508,7 @@ export default function App() {
             id="main-canvas"
             width="100%" 
             height="100%" 
-            viewBox={`0 0 ${renderConfig.dimensions.width} ${renderConfig.dimensions.height}`}
+            viewBox={mainViewBox}
             preserveAspectRatio="xMidYMid slice"
             xmlns="http://www.w3.org/2000/svg"
          >
