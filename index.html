@@ -150,87 +150,123 @@
             </div>
         );
 
+        // --- HELPER: Pseudo Random für Noise ---
+        // Deterministic random based on x/y index
+        const pseudoRandom = (x, y) => {
+            return Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 - Math.floor(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453);
+        };
+
         // --- CANVAS AREA ---
         const CanvasArea = memo(forwardRef(({ renderConfig, dimensions, paintingState, onPaintInteraction }, ref) => {
             const { 
                 size, formScale, thickness, // Form Params
-                scale, gapX, gapY, rotation, // Grid
-                rowOffset, waveAmp, waveFreq, // Rhythm
+                scale, gapX, gapY, // Grid (Rotation removed from here)
+                rowOffset, waveAmp, waveFreq, posNoiseAmp, // Rhythm (posNoiseAmp added)
                 gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq, // Dynamic
                 fillColor 
             } = renderConfig;
             const { isPainting, brushSize, paintTool, modifications } = paintingState;
 
-            // 1. Grid Calculation
+            // 1. Grid Calculation (ZENTRIERT)
             const gridData = useMemo(() => {
                 const elementSize = (size * formScale) * scale;
                 const stepX = elementSize + gapX;
                 const stepY = elementSize + gapY;
 
-                if (stepX < 5 || stepY < 5) return { items: [], startX: 0, startY: 0, stepX: 1, stepY: 1 };
+                if (stepX < 5 || stepY < 5) return { items: [], centerX: 0, centerY: 0, stepX: 1, stepY: 1 };
 
-                const extraMargin = Math.ceil(Math.abs(waveAmp) / (stepY || 1)) + 4;
+                // Calculate how many items fit from center to edge
+                const halfWidth = dimensions.width / 2;
+                const halfHeight = dimensions.height / 2;
                 
-                const cols = Math.ceil(dimensions.width / stepX) + 4;
-                const rows = Math.ceil(dimensions.height / stepY) + (extraMargin * 2);
+                // We add a buffer to ensure we cover the screen even when rotated or wave-shifted
+                // Extra margin depends on wave amplitude
+                const waveBuffer = Math.abs(waveAmp) + 100; // Pixel buffer
                 
-                const totalGridWidth = cols * stepX;
-                const totalGridHeight = rows * stepY;
-                
-                const startX = (dimensions.width - totalGridWidth) / 2;
-                const startY = (dimensions.height - totalGridHeight) / 2;
+                const countX = Math.ceil((halfWidth + 100) / stepX); 
+                const countY = Math.ceil((halfHeight + waveBuffer) / stepY);
+
+                // Total columns/rows (must be odd to have a perfect center item)
+                const cols = countX * 2 + 1;
+                const rows = countY * 2 + 1;
 
                 const totalItems = cols * rows;
-                const MAX_ITEMS = 4000;
+                // Limit items to prevent crashes, but keep high enough for typical usage
+                // If zoom is very small (scale 0.2), items count increases.
+                const MAX_ITEMS = 5000; 
+                
+                // If too many items, we might clip the outer edges, but with min-scale 0.2 it should be mostly fine
                 const effectiveRows = totalItems > MAX_ITEMS ? Math.floor(MAX_ITEMS / cols) : rows;
+                const effectiveCols = cols;
 
-                return { startX, startY, stepX, stepY, cols, effectiveRows, centerX: dimensions.width/2, centerY: dimensions.height/2 };
+                return { 
+                    stepX, stepY, 
+                    halfCols: Math.floor(effectiveCols / 2), 
+                    halfRows: Math.floor(effectiveRows / 2),
+                    centerX: halfWidth, 
+                    centerY: halfHeight 
+                };
             }, [renderConfig, dimensions]);
 
             // 2. Generate Items
             const gridItems = useMemo(() => {
-                const { startX, startY, stepX, stepY, cols, effectiveRows, centerX, centerY } = gridData;
-                if (cols === 0) return [];
+                const { stepX, stepY, halfCols, halfRows, centerX, centerY } = gridData;
+                if (halfCols === 0) return [];
 
                 const items = [];
                 const maxDist = Math.sqrt(Math.pow(dimensions.width/2, 2) + Math.pow(dimensions.height/2, 2)) || 1;
 
-                for (let r = 0; r < effectiveRows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        let x = startX + (c * stepX);
-                        let y = startY + (r * stepY);
+                // Iterate relative to center (c=0, r=0 is center)
+                for (let r = -halfRows; r <= halfRows; r++) {
+                    for (let c = -halfCols; c <= halfCols; c++) {
+                        
+                        // Base Position (Center + Grid Step)
+                        let x = centerX + (c * stepX);
+                        let y = centerY + (r * stepY);
 
-                        if (r % 2 === 1) x += rowOffset;
+                        // 1. Rhythmus: Row Offset
+                        if (r % 2 !== 0) x += rowOffset; // Changed modulo check to work with negative numbers correctly logically
+                        
+                        // 2. Rhythmus: Wave
+                        // Use 'c' for wave phase to keep it consistent across rows
                         y += Math.sin(c * waveFreq) * waveAmp;
 
-                        // Center-based Calculations
+                        // 3. Rhythmus: Position Noise (Jitter)
+                        if (posNoiseAmp > 0) {
+                            const jitterX = (pseudoRandom(c, r) - 0.5) * 2 * posNoiseAmp;
+                            const jitterY = (pseudoRandom(r, c) - 0.5) * 2 * posNoiseAmp; // swapped seeds
+                            x += jitterX;
+                            y += jitterY;
+                        }
+
+                        // Center-based Calculations for Dynamics
+                        // Recalculate relative pos after displacements for effects? 
+                        // Usually effects are based on grid pos. Let's use current x/y relative to center.
                         const dx = x - centerX;
                         const dy = y - centerY;
                         const dist = Math.sqrt(dx*dx + dy*dy);
-                        const progress = dist / maxDist;
-                        // Angle (-PI to PI) -> Normalized 0 to 1
+                        const progress = Math.min(dist / maxDist, 1);
                         const angleRad = Math.atan2(dy, dx); 
                         
-                        // Noise Calculation (Interference pattern to simulate clouds)
-                        // Using simple math for performance (no Perlin lib needed)
-                        const noiseVal = (Math.sin(c * noiseFreq) + Math.cos(r * noiseFreq * 0.8) + Math.sin((c+r) * noiseFreq * 0.5)); 
+                        // Noise Cloud Calculation
+                        // Frequency scales the input to the noise function
+                        const nVal = (Math.sin(c * noiseFreq) + Math.cos(r * noiseFreq * 0.85) + Math.sin((c*0.5 + r*0.3) * noiseFreq));
                         
                         // 1. Scale Effects
                         let currentScale = scale * formScale;
                         
-                        // Distance Scale
+                        // Distance Gradient
                         currentScale *= (1 + progress * gradScaleY * 2);
                         
-                        // Noise Scale (mapped to approx -1 to 1 range multiplied by amp)
-                        currentScale *= (1 + noiseVal * noiseAmp);
+                        // Noise Cloud Scale
+                        // nVal varies roughly -2 to 2. We normalize/clamp it for the amp effect
+                        currentScale *= (1 + nVal * 0.5 * noiseAmp);
 
                         if (currentScale < 0.1) currentScale = 0.1;
                         
                         // 2. Rotation Effects
-                        let currentRotation = rotation;
-                        // Distance Rotation
+                        let currentRotation = 0; // Base rotation removed from grid settings
                         currentRotation += (progress * gradRotateY);
-                        // Angle Rotation (Spiral Effect)
                         currentRotation += (angleRad * (gradAngle || 0));
 
                         // Apply Paint Modifications
@@ -239,6 +275,10 @@
                             currentScale += modifications[modKey];
                             if (currentScale < 0.1) currentScale = 0.1;
                         }
+
+                        // Only render if within reasonable bounds (optimization)
+                        // Add buffer for scale
+                        if (x < -200 || x > dimensions.width + 200 || y < -200 || y > dimensions.height + 200) continue;
 
                         const transformStr = `translate(${x.toFixed(2)}, ${y.toFixed(2)}) rotate(${currentRotation.toFixed(2)}) scale(${currentScale.toFixed(2)})`;
                         items.push(<use key={modKey} href="#plus-shape" transform={transformStr} fill={fillColor} />);
@@ -249,7 +289,6 @@
 
             // 3. Plus Shape Def
             const plusPath = useMemo(() => {
-                // Base size definition
                 const s = size / 2;
                 const t = thickness / 2;
                 return `M ${-t} ${-s} h ${thickness} v ${size} h -${thickness} Z M ${-s} ${-t} h ${size} v ${thickness} h -${size} Z`;
@@ -263,22 +302,32 @@
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
 
-                const { startX, startY, stepX, stepY, cols, effectiveRows } = gridData;
+                const { stepX, stepY, halfCols, halfRows, centerX, centerY } = gridData;
                 
-                const rangeX = Math.ceil(brushSize / stepX) + 1;
-                const rangeY = Math.ceil(brushSize / stepY) + 1;
-                const cIdx = Math.round((mouseX - startX) / stepX);
-                const rIdx = Math.round((mouseY - startY) / stepY);
+                // Optimization: Estimate indices near mouse
+                // Reverse the grid transform logic roughly
+                const estC = Math.round((mouseX - centerX) / stepX);
+                const estR = Math.round((mouseY - centerY) / stepY);
+                
+                const rangeX = Math.ceil(brushSize / stepX) + 2;
+                const rangeY = Math.ceil(brushSize / stepY) + 2;
 
                 const newMods = {};
                 let hasChanges = false;
 
-                for (let r = Math.max(0, rIdx - rangeY); r < Math.min(effectiveRows, rIdx + rangeY); r++) {
-                    for (let c = Math.max(0, cIdx - rangeX); c < Math.min(cols, cIdx + rangeX); c++) {
-                        let x = startX + (c * stepX);
-                        let y = startY + (r * stepY);
-                        if (r % 2 === 1) x += rowOffset;
+                for (let r = Math.max(-halfRows, estR - rangeY); r <= Math.min(halfRows, estR + rangeY); r++) {
+                    for (let c = Math.max(-halfCols, estC - rangeX); c <= Math.min(halfCols, estC + rangeX); c++) {
+                        
+                        // Exact position recalculation for collision
+                        let x = centerX + (c * stepX);
+                        let y = centerY + (r * stepY);
+                        if (r % 2 !== 0) x += rowOffset;
                         y += Math.sin(c * waveFreq) * waveAmp;
+                        
+                        if (posNoiseAmp > 0) {
+                            x += (pseudoRandom(c, r) - 0.5) * 2 * posNoiseAmp;
+                            y += (pseudoRandom(r, c) - 0.5) * 2 * posNoiseAmp;
+                        }
 
                         const dist = Math.sqrt(Math.pow(mouseX - x, 2) + Math.pow(mouseY - y, 2));
                         
@@ -349,7 +398,7 @@
             // UI State
             const [size, setSize] = useState(60);       
             const [thickness, setThickness] = useState(15); 
-            const [formScale, setFormScale] = useState(1); // NEW: Base Scale
+            const [formScale, setFormScale] = useState(1); 
 
             const [bgColor, setBgColor] = useState('#040066');
             const [bgColor2, setBgColor2] = useState('#040066'); 
@@ -358,17 +407,18 @@
             const [scale, setScale] = useState(0.8);
             const [gapX, setGapX] = useState(20);
             const [gapY, setGapY] = useState(20);
-            const [rotation, setRotation] = useState(0);
+            // rotation removed
             const [rowOffset, setRowOffset] = useState(0); 
             const [waveAmp, setWaveAmp] = useState(0);     
             const [waveFreq, setWaveFreq] = useState(0.5); 
+            const [posNoiseAmp, setPosNoiseAmp] = useState(0); // NEW
             
             // Dynamics
             const [gradScaleY, setGradScaleY] = useState(0); 
             const [gradRotateY, setGradRotateY] = useState(0);
-            const [gradAngle, setGradAngle] = useState(0); // NEW: Angle Rotation
-            const [noiseAmp, setNoiseAmp] = useState(0);   // NEW: Noise Strength
-            const [noiseFreq, setNoiseFreq] = useState(0.2); // NEW: Noise Freq
+            const [gradAngle, setGradAngle] = useState(0); 
+            const [noiseAmp, setNoiseAmp] = useState(0);   
+            const [noiseFreq, setNoiseFreq] = useState(0.2); 
 
             const [exportBg, setExportBg] = useState(true);
 
@@ -379,7 +429,7 @@
             const [paintModifications, setPaintModifications] = useState({}); 
 
             const [renderConfig, setRenderConfig] = useState({
-                size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq
+                size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, /*rotation*/ rowOffset, waveAmp, waveFreq, posNoiseAmp, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq
             });
 
             const containerRef = useRef(null);
@@ -396,10 +446,10 @@
 
             useEffect(() => {
                 const h = setTimeout(() => {
-                    setRenderConfig({ size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq });
+                    setRenderConfig({ size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, /*rotation*/ rowOffset, waveAmp, waveFreq, posNoiseAmp, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq });
                 }, 40);
                 return () => clearTimeout(h);
-            }, [size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq]);
+            }, [size, formScale, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, /*rotation*/ rowOffset, waveAmp, waveFreq, posNoiseAmp, gradScaleY, gradRotateY, gradAngle, noiseAmp, noiseFreq]);
 
             const handlePaintInteraction = useCallback((newMods) => {
                 setPaintModifications(prev => ({ ...prev, ...newMods }));
@@ -410,7 +460,7 @@
             const reset = () => {
                 setSize(60); setThickness(15); setFormScale(1);
                 setBgColor('#040066'); setBgColor2('#040066'); setUseBgGradient(false); setFillColor('#ffffff');
-                setScale(0.8); setGapX(20); setGapY(20); setRotation(0); setRowOffset(0); setWaveAmp(0); setWaveFreq(0.5); 
+                setScale(0.8); setGapX(20); setGapY(20); /*setRotation(0);*/ setRowOffset(0); setWaveAmp(0); setWaveFreq(0.5); setPosNoiseAmp(0);
                 setGradScaleY(0); setGradRotateY(0); setGradAngle(0); setNoiseAmp(0); setNoiseFreq(0.2);
                 setExportBg(true); setPaintModifications({});
             };
@@ -418,9 +468,9 @@
                 const r = (min, max) => Math.round((Math.random() * (max - min) + min) * 100) / 100;
                 const rColor = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
                 setSize(r(20, 100)); setThickness(r(5, 40)); setFormScale(r(0.5, 1.5));
-                setScale(r(0.3, 1.2)); setGapX(r(0, 80)); setGapY(r(0, 80)); // Min 0
-                setRotation(Math.random()>0.7 ? r(0, 90) : 0); setRowOffset(Math.random()>0.5 ? r(-50, 50) : 0);
-                setWaveAmp(Math.random()>0.7 ? r(0, 50) : 0); setWaveFreq(r(0.1, 0.8)); 
+                setScale(r(0.3, 1.2)); setGapX(r(0, 80)); setGapY(r(0, 80));
+                /*setRotation(Math.random()>0.7 ? r(0, 90) : 0);*/ setRowOffset(Math.random()>0.5 ? r(-50, 50) : 0);
+                setWaveAmp(Math.random()>0.7 ? r(0, 50) : 0); setWaveFreq(r(0.1, 0.8)); setPosNoiseAmp(Math.random()>0.7 ? r(0, 50) : 0);
                 setGradScaleY(Math.random()>0.6 ? r(-1, 1) : 0); setGradRotateY(Math.random()>0.8 ? r(0, 180) : 0);
                 setGradAngle(Math.random()>0.8 ? r(0, 180) : 0); setNoiseAmp(Math.random()>0.7 ? r(0, 1) : 0);
                 setBgColor(rColor()); setBgColor2(rColor()); setUseBgGradient(Math.random()>0.5); setFillColor(rColor());
@@ -442,7 +492,6 @@
             };
 
             const previewPath = useMemo(() => {
-                // Scale for preview
                 const s = (size * formScale) / 2;
                 const t = (thickness * formScale) / 2;
                 return `M ${-t} ${-s} h ${thickness*formScale} v ${size*formScale} h -${thickness*formScale} Z M ${-s} ${-t} h ${size*formScale} v ${thickness*formScale} h -${size*formScale} Z`;
@@ -489,13 +538,15 @@
                                 <Slider label="Zoom" value={scale} onChange={setScale} min={0.2} max={2.5} step={0.01} />
                                 <Slider label="Abstand X" value={gapX} onChange={setGapX} min={0} max={150} step={0.1} />
                                 <Slider label="Abstand Y" value={gapY} onChange={setGapY} min={0} max={150} step={0.1} />
-                                <Slider label="Rotation" value={rotation} onChange={setRotation} min={0} max={90} unit="°" step={0.1} />
+                                {/* Rotation entfernt */}
                             </SliderGroup>
 
                             <SliderGroup title="Rhythmus & Wellen" icon={Activity}>
                                 <Slider label="Versatz (2. Zeile)" value={rowOffset} onChange={setRowOffset} min={-100} max={100} step={0.1} />
                                 <Slider label="Welle Amplitude" value={waveAmp} onChange={setWaveAmp} min={0} max={100} step={0.1} />
                                 <Slider label="Welle Frequenz" value={waveFreq} onChange={setWaveFreq} min={0.05} max={1.5} step={0.01} />
+                                <div className="h-px bg-blue-900/30 my-2"></div>
+                                <Slider label="Position Noise" value={posNoiseAmp} onChange={setPosNoiseAmp} min={0} max={100} step={0.1} highlight={true} />
                             </SliderGroup>
 
                             <SliderGroup title="Verläufe & Dynamik (Zentriert)" icon={TrendingUp}>
@@ -508,7 +559,7 @@
                                     <div className="h-px bg-blue-900/30 my-2"></div>
                                     <div className="flex items-center gap-2 mb-1"><Cloud size={10} className="text-blue-400"/><span className="text-[9px] text-blue-300">Noise (Wolken)</span></div>
                                     <Slider label="Noise Stärke" value={noiseAmp} onChange={setNoiseAmp} min={0} max={2} step={0.01} highlight={true} />
-                                    <Slider label="Noise Frequenz" value={noiseFreq} onChange={setNoiseFreq} min={0.01} max={1} step={0.01} highlight={true} />
+                                    <Slider label="Noise Skalierung (Frequenz)" value={noiseFreq} onChange={setNoiseFreq} min={0.01} max={1} step={0.01} highlight={true} />
                                 </div>
                             </SliderGroup>
 
