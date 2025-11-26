@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pattern Generator</title>
+    <title>PlusLab Generator</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -16,388 +16,151 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
-        /* Custom Scrollbar für Webkit */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #111827; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #374151; 
-            border-radius: 3px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #4B5563; 
-        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
         body { margin: 0; overflow: hidden; background: #000; }
+        
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- Imports simulieren ---
-        const { useState, useRef, useMemo, useEffect, useDeferredValue } = React;
+        const { useState, useRef, useMemo, useEffect, memo, forwardRef } = React;
         
-        // --- INLINE ICONS (Ersetzt externe Abhängigkeit zu lucide-react für mehr Stabilität) ---
-        const IconBase = ({ children, size = 24, className = "" }) => (
-            <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width={size} 
-                height={size} 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                className={className}
-            >
-                {children}
-            </svg>
+        // --- ICONS ---
+        const IconBase = ({ children, size = 12, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
         );
+        const Download = (p) => (<IconBase {...p} size={14}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></IconBase>);
+        const Maximize = (p) => (<IconBase {...p}><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></IconBase>);
+        const Grid = (p) => (<IconBase {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>);
+        const Activity = (p) => (<IconBase {...p}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></IconBase>);
+        const Layers = (p) => (<IconBase {...p}><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></IconBase>);
+        const Palette = (p) => (<IconBase {...p}><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></IconBase>);
+        const Shuffle = (p) => (<IconBase {...p}><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l10.6-12.6c.7-1 1.8-1.7 3-1.7H22"/><path d="m16 2 5 5-5 5"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l1.6 1.9"/><path d="M18.7 13.3c.8 1.1 2 1.7 3.3 1.7H22"/><path d="m16 22 5-5-5-5"/></IconBase>);
+        const TrendingUp = (p) => (<IconBase {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></IconBase>);
+        const RotateCcw = (p) => (<IconBase {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></IconBase>);
 
-        const Download = (props) => (
-            <IconBase {...props}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
-            </IconBase>
-        );
-        const Maximize = (props) => (
-            <IconBase {...props}>
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-            </IconBase>
-        );
-        const Grid = (props) => (
-            <IconBase {...props}>
-                <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
-            </IconBase>
-        );
-        const Activity = (props) => (
-            <IconBase {...props}>
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-            </IconBase>
-        );
-        const Layers = (props) => (
-            <IconBase {...props}>
-                <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>
-            </IconBase>
-        );
-        const Palette = (props) => (
-            <IconBase {...props}>
-                <circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
-            </IconBase>
-        );
-        const Shuffle = (props) => (
-            <IconBase {...props}>
-                <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l10.6-12.6c.7-1 1.8-1.7 3-1.7H22"/><path d="m16 2 5 5-5 5"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l1.6 1.9"/><path d="M18.7 13.3c.8 1.1 2 1.7 3.3 1.7H22"/><path d="m16 22 5-5-5-5"/>
-            </IconBase>
-        );
-        const TrendingUp = (props) => (
-            <IconBase {...props}>
-                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
-            </IconBase>
-        );
-        const RotateCcw = (props) => (
-            <IconBase {...props}>
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
-            </IconBase>
-        );
+        // --- COMPONENTS ---
 
-
-        // --- Hilfskomponente: Numerisch editierbarer Wert ---
-        const EditableValue = ({ value, onChange, min, max, unit }) => {
+        const EditableValue = memo(({ value, onChange, min, max, unit }) => {
             const [isEditing, setIsEditing] = useState(false);
             const [tempValue, setTempValue] = useState(value);
             const inputRef = useRef(null);
 
             useEffect(() => {
                 if (isEditing && inputRef.current) {
-                inputRef.current.focus();
-                inputRef.current.select();
+                    inputRef.current.focus();
+                    inputRef.current.select();
                 }
             }, [isEditing]);
 
             useEffect(() => {
-                if (value !== undefined && value !== null) {
-                setTempValue(value);
-                }
-            }, [value]);
+                if (!isEditing && value !== undefined) setTempValue(value);
+            }, [value, isEditing]);
 
             const commit = () => {
                 let val = parseFloat(tempValue);
                 if (isNaN(val)) val = value;
+                val = Math.round(val * 100) / 100;
                 if (min !== undefined && val < min) val = min;
                 if (max !== undefined && val > max) val = max;
-                
                 onChange(val);
                 setIsEditing(false);
             };
 
             const handleKeyDown = (e) => {
                 if (e.key === 'Enter') commit();
-                if (e.key === 'Escape') {
-                setTempValue(value);
-                setIsEditing(false);
-                }
+                if (e.key === 'Escape') { setTempValue(value); setIsEditing(false); }
             };
 
             if (isEditing) {
-                return (
-                <input
-                    ref={inputRef}
-                    type="number"
-                    value={tempValue}
-                    onChange={(e) => setTempValue(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={handleKeyDown}
-                    className="w-10 h-4 text-[10px] bg-gray-700 text-white rounded px-1 border border-blue-500 outline-none text-right"
-                />
-                );
+                return <input ref={inputRef} type="number" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown} className="w-12 h-4 text-[10px] bg-gray-700 text-white rounded px-0 border border-blue-500 outline-none text-right overflow-hidden m-0 leading-none select-text" />;
             }
+            return <span onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 font-mono hover:text-blue-300 cursor-pointer transition-colors min-w-[30px] text-right inline-block" title="Bearbeiten">{typeof value === 'number' ? value.toFixed(2) : "0.00"}{unit}</span>;
+        });
 
-            const displayValue = typeof value === 'number' ? (Math.round(value * 100) / 100) : 0;
+        const Slider = memo(({ label, value, onChange, min, max, step = 0.01, unit = "", highlight = false }) => {
+            const handleChange = (e) => {
+                // Konvertiere zu Float und runde strikt auf 2 Stellen
+                const raw = parseFloat(e.target.value);
+                const rounded = Math.round(raw * 100) / 100;
+                onChange(rounded);
+            };
 
             return (
-                <span 
-                onClick={() => setIsEditing(true)}
-                className="text-[10px] text-gray-400 font-mono hover:text-blue-300 cursor-pointer transition-colors min-w-[30px] text-right"
-                title="Klicken zum Bearbeiten"
-                >
-                {displayValue}{unit}
-                </span>
+                <div className="flex items-center gap-2 mb-1 h-6">
+                    <label className={`text-[10px] font-medium w-24 shrink-0 truncate ${highlight ? 'text-blue-300' : 'text-gray-400'}`} title={label}>{label}</label>
+                    <div className="flex-grow flex items-center relative">
+                        <input type="range" min={min} max={max} step={step} value={value} onChange={handleChange} className={`w-full h-1 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${highlight ? 'bg-blue-900 accent-blue-400' : 'bg-gray-700 accent-blue-500 hover:accent-blue-400'}`} />
+                    </div>
+                    <div className="w-10 flex justify-end shrink-0">
+                        <EditableValue value={value} onChange={onChange} min={min} max={max} unit={unit} />
+                    </div>
+                </div>
             );
-        };
+        });
 
-        // --- Hilfskomponente: Slider (Horizontal Layout) ---
-        const Slider = ({ label, value, onChange, min, max, step = 1, unit = "", highlight = false }) => (
-        <div className="flex items-center gap-2 mb-1 h-6">
-            <label 
-                className={`text-[10px] font-medium w-24 shrink-0 truncate ${highlight ? 'text-blue-300' : 'text-gray-400'}`}
-                title={label}
-            >
-                {label}
-            </label>
-            
-            <div className="flex-grow flex items-center relative">
-                <input
-                type="range"
-                min={min}
-                max={max}
-                step={step}
-                value={value}
-                onChange={(e) => onChange(parseFloat(e.target.value))}
-                className={`w-full h-1 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${highlight ? 'bg-blue-900 accent-blue-400' : 'bg-gray-700 accent-blue-500 hover:accent-blue-400'}`}
-                />
-            </div>
+        const ColorPicker = memo(({ label, value, onChange }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [tempValue, setTempValue] = useState(value);
+            const inputRef = useRef(null);
 
-            <div className="w-10 flex justify-end shrink-0">
-                <EditableValue value={value} onChange={onChange} min={min} max={max} unit={unit} />
-            </div>
-        </div>
-        );
+            useEffect(() => { if (isEditing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [isEditing]);
+            useEffect(() => { setTempValue(value); }, [value]);
 
-        // --- Hilfskomponente: Color Picker (Editierbar) ---
-        const ColorPicker = ({ label, value, onChange }) => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [tempValue, setTempValue] = useState(value);
-        const inputRef = useRef(null);
-
-        useEffect(() => {
-            if (isEditing && inputRef.current) {
-            inputRef.current.focus();
-            inputRef.current.select();
-            }
-        }, [isEditing]);
-
-        useEffect(() => {
-            setTempValue(value);
-        }, [value]);
-
-        const commit = () => {
-            let val = tempValue.trim();
-            if (/^[0-9A-Fa-f]{6}$/.test(val)) val = '#' + val;
-
-            if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-                onChange(val);
-            } else {
-                setTempValue(value);
-            }
-            setIsEditing(false);
-        };
-
-        const handleKeyDown = (e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') {
-            setTempValue(value);
-            setIsEditing(false);
-            }
-        };
-
-        const safeColor = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000';
-
-        return (
-            <div className="flex items-center justify-between py-0.5 h-6">
-            <label className="text-[10px] font-medium text-gray-400 w-24 shrink-0 truncate">{label}</label>
-            <div className="flex items-center gap-2 flex-grow justify-end">
-                {isEditing ? (
-                    <input 
-                        ref={inputRef}
-                        type="text" 
-                        value={tempValue} 
-                        onChange={(e) => setTempValue(e.target.value)} 
-                        onBlur={commit} 
-                        onKeyDown={handleKeyDown}
-                        className="w-14 h-4 text-[10px] bg-gray-700 text-white rounded px-1 border border-blue-500 outline-none font-mono uppercase"
-                    />
-                ) : (
-                    <span 
-                        className="text-[10px] font-mono text-gray-500 uppercase cursor-pointer hover:text-white transition-colors" 
-                        onClick={() => setIsEditing(true)}
-                        title="Klicken zum Bearbeiten"
-                    >
-                        {value}
-                    </span>
-                )}
-                <input 
-                    type="color" 
-                    value={safeColor} 
-                    onChange={(e) => onChange(e.target.value)}
-                    className="w-8 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                />
-            </div>
-            </div>
-        );
-        };
-
-        // --- Hauptkomponente: App ---
-        function App() {
-            // --- 1. UI State (Live für Slider) ---
-            const [size, setSize] = useState(60);       
-            const [thickness, setThickness] = useState(15); 
-
-            const [bgColor, setBgColor] = useState('#040066');
-            const [bgColor2, setBgColor2] = useState('#040066'); 
-            const [useBgGradient, setUseBgGradient] = useState(false); 
-            const [fillColor, setFillColor] = useState('#ffffff');
-
-            const [scale, setScale] = useState(0.8);
-            const [gapX, setGapX] = useState(20);
-            const [gapY, setGapY] = useState(20);
-            const [rotation, setRotation] = useState(0);
-            
-            const [rowOffset, setRowOffset] = useState(0); 
-            const [waveAmp, setWaveAmp] = useState(0);     
-            const [waveFreq, setWaveFreq] = useState(0.5); 
-            const [gradScaleY, setGradScaleY] = useState(0); 
-            const [gradRotateY, setGradRotateY] = useState(0); 
-
-            const containerRef = useRef(null);
-            const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
-
-            // --- 2. Render State (Entkoppelt für Performance) ---
-            const [renderConfig, setRenderConfig] = useState({
-                size: 60, thickness: 15,
-                bgColor: '#040066', bgColor2: '#040066', useBgGradient: false, fillColor: '#ffffff',
-                scale: 0.8, gapX: 20, gapY: 20, rotation: 0,
-                rowOffset: 0, waveAmp: 0, waveFreq: 0.5, gradScaleY: 0, gradRotateY: 0,
-                dimensions: { width: 1200, height: 800 }
-            });
-
-            // Resize Observer
-            useEffect(() => {
-                if (!containerRef.current) return;
-                const updateSize = () => {
-                setDimensions({
-                    width: containerRef.current.offsetWidth,
-                    height: containerRef.current.offsetHeight
-                });
-                };
-                updateSize();
-                window.addEventListener('resize', updateSize);
-                return () => window.removeEventListener('resize', updateSize);
-            }, []);
-
-            // --- 3. Sync Logic: UI -> Render State (via requestAnimationFrame) ---
-            useEffect(() => {
-                let animationFrameId;
-
-                const syncRenderConfig = () => {
-                setRenderConfig({
-                    size, thickness,
-                    bgColor, bgColor2, useBgGradient, fillColor,
-                    scale, gapX, gapY, rotation,
-                    rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY,
-                    dimensions
-                });
-                };
-
-                animationFrameId = requestAnimationFrame(syncRenderConfig);
-                
-                return () => cancelAnimationFrame(animationFrameId);
-            }, [
-                size, thickness, 
-                bgColor, bgColor2, useBgGradient, fillColor,
-                scale, gapX, gapY, rotation,
-                rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY,
-                dimensions
-            ]);
-
-
-            // --- Reset Funktion ---
-            const reset = () => {
-                setSize(60); setThickness(15);
-                setBgColor('#040066'); setBgColor2('#040066'); setUseBgGradient(false); setFillColor('#ffffff');
-                setScale(0.8); setGapX(20); setGapY(20); setRotation(0);
-                setRowOffset(0); setWaveAmp(0); setWaveFreq(0.5); setGradScaleY(0); setGradRotateY(0);
+            const commit = () => {
+                let val = tempValue.trim();
+                if (/^[0-9A-Fa-f]{6}$/.test(val)) val = '#' + val;
+                if (/^#[0-9A-Fa-f]{6}$/.test(val)) onChange(val); else setTempValue(value);
+                setIsEditing(false);
             };
 
-            // --- Randomizer ---
-            const randomize = () => {
-                const r = (min, max) => Math.random() * (max - min) + min;
-                const rColor = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+            const handleKeyDown = (e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setTempValue(value); setIsEditing(false); } };
+            const safeColor = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000';
 
-                setSize(r(20, 100));
-                setThickness(r(5, 40));
-                setScale(r(0.3, 1.2));
-                setGapX(r(-10, 80));
-                setGapY(r(-10, 80));
-                setRotation(Math.random() > 0.7 ? r(0, 90) : 0); 
-                setRowOffset(Math.random() > 0.5 ? r(-50, 50) : 0);
-                setWaveAmp(Math.random() > 0.7 ? r(0, 50) : 0);
-                setWaveFreq(r(0.1, 0.8));
-                setGradScaleY(Math.random() > 0.6 ? r(-1, 1) : 0);
-                setGradRotateY(Math.random() > 0.8 ? r(0, 180) : 0);
-                const bg = rColor();
-                setBgColor(bg);
-                setBgColor2(rColor());
-                setUseBgGradient(Math.random() > 0.5);
-                setFillColor(rColor());
-            };
+            return (
+                <div className="flex items-center justify-between py-0.5 h-6">
+                    <label className="text-[10px] font-medium text-gray-400 w-24 shrink-0 truncate">{label}</label>
+                    <div className="flex items-center gap-2 flex-grow justify-end">
+                        {isEditing ? <input ref={inputRef} type="text" value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown} className="w-14 h-4 text-[10px] bg-gray-700 text-white rounded px-1 border border-blue-500 outline-none font-mono uppercase select-text" /> 
+                        : <span className="text-[10px] font-mono text-gray-500 uppercase cursor-pointer hover:text-white transition-colors" onClick={() => setIsEditing(true)}>{value}</span>}
+                        <input type="color" value={safeColor} onChange={(e) => onChange(e.target.value)} className="w-8 h-4 rounded cursor-pointer bg-transparent border-0 p-0" />
+                    </div>
+                </div>
+            );
+        });
 
-            // --- Logik: Einzelelement Pfad ---
+        const SliderGroup = ({ title, icon: Icon, children }) => (
+            <div className="mb-3 border-b border-gray-800 pb-2 last:border-0">
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    {Icon && <Icon className="text-blue-500" />} {title}
+                </h3>
+                <div className="pl-1">{children}</div>
+            </div>
+        );
+
+        // --- CANVAS AREA (ISOLIERT) ---
+        // Diese Komponente erhält nur die Render-Config (die verzögert ist). 
+        // Solange man am Slider zieht, ändert sich hier NICHTS. Das ist der Performance-Fix.
+        const CanvasArea = memo(forwardRef(({ renderConfig, dimensions }, ref) => {
+            const { size, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY, fillColor } = renderConfig;
+
+            // Plus Shape (Grid)
             const plusPath = useMemo(() => {
-                const s = renderConfig.size / 2;
-                const t = renderConfig.thickness / 2;
-                return `M ${-t} ${-s} h ${renderConfig.thickness} v ${renderConfig.size} h -${renderConfig.thickness} Z M ${-s} ${-t} h ${renderConfig.size} v ${renderConfig.thickness} h -${renderConfig.size} Z`;
-            }, [renderConfig.size, renderConfig.thickness]);
-
-            const previewPath = useMemo(() => {
                 const s = size / 2;
-                const t = thickness / 2;
-                return `M ${-t} ${-s} h ${thickness} v ${size} h -${thickness} Z M ${-s} ${-t} h ${size} v ${thickness} h -${size} Z`;
-            }, [size, thickness]);
+                const t = renderConfig.thickness / 2;
+                return `M ${-t} ${-s} h ${renderConfig.thickness} v ${size} h -${renderConfig.thickness} Z M ${-s} ${-t} h ${size} v ${renderConfig.thickness} h -${size} Z`;
+            }, [size, renderConfig.thickness]);
 
-            // --- Logik: Raster Generierung ---
+            // Grid Items Calculation
             const gridItems = useMemo(() => {
-                const { 
-                size, scale, gapX, gapY, rotation, rowOffset, 
-                waveAmp, waveFreq, gradScaleY, gradRotateY, dimensions, fillColor 
-                } = renderConfig;
-
                 const items = [];
-                
                 const elementSize = size * scale;
                 const stepX = elementSize + gapX;
                 const stepY = elementSize + gapY;
@@ -407,9 +170,8 @@
                 const extraMargin = Math.ceil(Math.abs(waveAmp) / (stepY || 1)) + 2;
                 const cols = Math.ceil(dimensions.width / stepX) + 2;
                 const rows = Math.ceil(dimensions.height / stepY) + (extraMargin * 2);
-                
                 const totalItems = cols * rows;
-                const MAX_ITEMS = 1200; 
+                const MAX_ITEMS = 1200;
                 const effectiveRows = totalItems > MAX_ITEMS ? Math.floor(MAX_ITEMS / cols) : rows;
 
                 const startX = -stepX;
@@ -417,218 +179,196 @@
 
                 for (let r = 0; r < effectiveRows; r++) {
                     const progressY = r / effectiveRows;
-                    
-                    let currentScale = scale * (1 + (progressY - 0.5) * gradScaleY * 2); 
+                    let currentScale = scale * (1 + (progressY - 0.5) * gradScaleY * 2);
                     if (currentScale < 0.1) currentScale = 0.1;
-
                     let currentRotation = rotation + (progressY * gradRotateY);
 
                     for (let c = 0; c < cols; c++) {
                         let x = startX + (c * stepX);
                         let y = startY + (r * stepY);
-
                         if (r % 2 === 1) x += rowOffset;
+                        y += Math.sin(c * waveFreq) * waveAmp;
 
-                        const waveY = Math.sin(c * waveFreq) * waveAmp;
-                        y += waveY;
-
-                        const transformStr = `translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${currentRotation.toFixed(1)}) scale(${currentScale.toFixed(2)})`;
-
-                        items.push(
-                        <use
-                            key={`${r}-${c}`}
-                            href="#plus-shape"
-                            transform={transformStr}
-                            fill={fillColor}
-                        />
-                        );
+                        const transformStr = `translate(${x.toFixed(2)}, ${y.toFixed(2)}) rotate(${currentRotation.toFixed(2)}) scale(${currentScale.toFixed(2)})`;
+                        items.push(<use key={`${r}-${c}`} href="#plus-shape" transform={transformStr} fill={fillColor} />);
                     }
                 }
                 return items;
-            }, [renderConfig]); 
+            }, [renderConfig, dimensions]);
 
+            // Background Fill Logic
+            const bgFill = renderConfig.useBgGradient ? "url(#bg-gradient)" : renderConfig.bgColor;
+
+            return (
+                <svg ref={ref} id="main-canvas" width="100%" height="100%" viewBox={`0 0 ${dimensions.width} ${dimensions.height}`} preserveAspectRatio="xMidYMid slice">
+                    <defs>
+                        <path id="plus-shape" d={plusPath} />
+                        {renderConfig.useBgGradient && (
+                            <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stopColor={renderConfig.bgColor} />
+                                <stop offset="100%" stopColor={renderConfig.bgColor2} />
+                            </linearGradient>
+                        )}
+                    </defs>
+                    <rect id="bg-rect" width="100%" height="100%" fill={bgFill} />
+                    <g>{gridItems}</g>
+                </svg>
+            );
+        }));
+
+        // --- APP ---
+        function App() {
+            // UI State
+            const [size, setSize] = useState(60);       
+            const [thickness, setThickness] = useState(15); 
+            const [bgColor, setBgColor] = useState('#040066');
+            const [bgColor2, setBgColor2] = useState('#040066'); 
+            const [useBgGradient, setUseBgGradient] = useState(false); 
+            const [fillColor, setFillColor] = useState('#ffffff');
+            const [scale, setScale] = useState(0.8);
+            const [gapX, setGapX] = useState(20);
+            const [gapY, setGapY] = useState(20);
+            const [rotation, setRotation] = useState(0);
+            const [rowOffset, setRowOffset] = useState(0); 
+            const [waveAmp, setWaveAmp] = useState(0);     
+            const [waveFreq, setWaveFreq] = useState(0.5); 
+            const [gradScaleY, setGradScaleY] = useState(0); 
+            const [gradRotateY, setGradRotateY] = useState(0); 
+            const [exportBg, setExportBg] = useState(true);
+
+            // Render Config (Debounced)
+            const [renderConfig, setRenderConfig] = useState({
+                size, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY
+            });
+
+            const containerRef = useRef(null);
+            const svgRef = useRef(null);
+            const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
+
+            // Resize
+            useEffect(() => {
+                if (!containerRef.current) return;
+                const updateSize = () => setDimensions({ width: containerRef.current.offsetWidth, height: containerRef.current.offsetHeight });
+                updateSize();
+                window.addEventListener('resize', updateSize);
+                return () => window.removeEventListener('resize', updateSize);
+            }, []);
+
+            // SYNC UI -> RENDER (Debounce 40ms)
+            // Dies verhindert, dass der CanvasWrapper während des Draggens rendert.
+            useEffect(() => {
+                const h = setTimeout(() => {
+                    setRenderConfig({ size, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY });
+                }, 40);
+                return () => clearTimeout(h);
+            }, [size, thickness, bgColor, bgColor2, useBgGradient, fillColor, scale, gapX, gapY, rotation, rowOffset, waveAmp, waveFreq, gradScaleY, gradRotateY]);
+
+            // Preview Path (Instant)
+            const previewPath = useMemo(() => {
+                const s = size / 2;
+                const t = thickness / 2;
+                return `M ${-t} ${-s} h ${thickness} v ${size} h -${thickness} Z M ${-s} ${-t} h ${size} v ${thickness} h -${size} Z`;
+            }, [size, thickness]);
+
+            // Actions
+            const reset = () => {
+                setSize(60); setThickness(15); setBgColor('#040066'); setBgColor2('#040066'); setUseBgGradient(false); setFillColor('#ffffff');
+                setScale(0.8); setGapX(20); setGapY(20); setRotation(0); setRowOffset(0); setWaveAmp(0); setWaveFreq(0.5); setGradScaleY(0); setGradRotateY(0); setExportBg(true);
+            };
+            const randomize = () => {
+                const r = (min, max) => Math.round((Math.random() * (max - min) + min) * 100) / 100;
+                const rColor = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                setSize(r(20, 100)); setThickness(r(5, 40)); setScale(r(0.3, 1.2)); setGapX(r(-10, 80)); setGapY(r(-10, 80));
+                setRotation(Math.random()>0.7 ? r(0, 90) : 0); setRowOffset(Math.random()>0.5 ? r(-50, 50) : 0);
+                setWaveAmp(Math.random()>0.7 ? r(0, 50) : 0); setWaveFreq(r(0.1, 0.8)); setGradScaleY(Math.random()>0.6 ? r(-1, 1) : 0);
+                setGradRotateY(Math.random()>0.8 ? r(0, 180) : 0);
+                setBgColor(rColor()); setBgColor2(rColor()); setUseBgGradient(Math.random()>0.5); setFillColor(rColor());
+            };
             const handleExport = () => {
-                const svgEl = document.getElementById('main-canvas');
-                if (!svgEl) return;
-                const svgData = new XMLSerializer().serializeToString(svgEl);
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const filename = `Pattern_S${size}_${timestamp}.svg`;
-                const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                if (!svgRef.current) return;
+                const clone = svgRef.current.cloneNode(true);
+                if (!exportBg) { const bg = clone.querySelector('#bg-rect'); if (bg) bg.remove(); }
+                const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = filename;
+                link.download = `PlusLab_${new Date().toISOString().slice(0, 10)}.svg`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
             };
 
-            const SliderGroup = ({ title, icon: Icon, children }) => (
-                <div className="mb-3 border-b border-gray-800 pb-2 last:border-0">
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    {Icon && <Icon size={12} className="text-blue-500" />}
-                    {title}
-                </h3>
-                <div className="pl-1">
-                    {children}
-                </div>
-                </div>
-            );
-
-            const mainStyle = {
-                background: useBgGradient 
-                    ? `linear-gradient(to bottom, ${bgColor}, ${bgColor2})` 
-                    : bgColor
-            };
-            const mainViewBox = `0 0 ${renderConfig.dimensions.width} ${renderConfig.dimensions.height}`;
+            const bgStyle = useBgGradient ? `linear-gradient(to bottom, ${bgColor}, ${bgColor2})` : bgColor;
 
             return (
-                <div className="flex h-screen w-full bg-gray-950 text-white overflow-hidden font-sans selection:bg-blue-500/30">
-                
-                {/* --- LINKS: Konfiguration --- */}
-                <aside className="w-[400px] flex-shrink-0 h-full overflow-y-auto border-r border-gray-800 bg-gray-900 flex flex-col shadow-2xl z-20">
-                    
-                    <div className="p-4 pb-2 flex justify-between items-start border-b border-gray-800/50">
-                    <div>
-                        <h1 className="text-lg font-bold text-white mb-0">Pattern Lab</h1>
-                        <p className="text-[10px] text-gray-500">Generatives Design Tool</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <button 
-                            onClick={reset}
-                            className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors shadow-lg active:scale-95 flex items-center gap-1 text-xs font-medium"
-                            title="Alles zurücksetzen"
-                        >
-                            <RotateCcw size={14} />
-                        </button>
-                        <button 
-                            onClick={randomize}
-                            className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors shadow-lg active:scale-95 flex items-center gap-1 text-xs font-medium"
-                            title="Zufälliges Muster generieren"
-                        >
-                            <Shuffle size={14} />
-                            Random
-                        </button>
-                    </div>
-                    </div>
-
-                    {/* Vorschau */}
-                    <div className="px-4 py-3 bg-gray-900/50">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-2">
-                            <Maximize size={12} className="text-blue-500" />
-                            Vorschau
-                        </div>
-                        <div className="h-20 w-full rounded border border-gray-700 flex items-center justify-center relative overflow-hidden transition-all duration-300"
-                            style={mainStyle}>
-                            <svg width="60" height="60" viewBox="-100 -100 200 200" className="drop-shadow-lg">
-                                <path d={previewPath} fill={fillColor} />
-                            </svg>
-                        </div>
-                    </div>
-
-                    <div className="flex-grow px-4 py-2">
-                    <SliderGroup title="Farben & Hintergrund" icon={Palette}>
-                        <ColorPicker label="Start-Farbe" value={bgColor} onChange={setBgColor} />
-                        
-                        {useBgGradient && (
-                        <ColorPicker label="End-Farbe" value={bgColor2} onChange={setBgColor2} />
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-1 mb-1 h-6">
-                            <label className="text-[10px] text-gray-400 w-24 shrink-0">Verlauf</label>
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    type="checkbox" 
-                                    id="gradCheck" 
-                                    checked={useBgGradient} 
-                                    onChange={(e) => setUseBgGradient(e.target.checked)}
-                                    className="accent-blue-500 h-3 w-3"
-                                />
-                                <label htmlFor="gradCheck" className="text-[10px] text-gray-500 cursor-pointer select-none">Aktivieren</label>
+                <div className="flex h-screen w-full bg-gray-950 text-white overflow-hidden font-sans selection:bg-blue-500/30 select-none">
+                    <aside className="w-[400px] flex-shrink-0 h-full overflow-y-auto border-r border-gray-800 bg-gray-900 flex flex-col shadow-2xl z-20">
+                        <div className="p-4 pb-2 flex justify-between items-start border-b border-gray-800/50">
+                            <h1 className="text-lg font-bold text-white mb-0">PlusLab</h1>
+                            <div className="flex gap-2">
+                                <button onClick={reset} className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded-md shadow-lg active:scale-95" title="Reset"><RotateCcw size={14} /></button>
+                                <button onClick={randomize} className="p-1.5 bg-blue-600 hover:bg-blue-500 rounded-md shadow-lg active:scale-95 flex items-center gap-1 text-xs font-medium"><Shuffle size={14} /> Random</button>
                             </div>
                         </div>
-                        
-                        <div className="h-px bg-gray-800 my-1"></div>
-                        <ColorPicker label="Form Farbe" value={fillColor} onChange={setFillColor} />
-                    </SliderGroup>
 
-                    <SliderGroup title="Form Parameter" icon={Layers}>
-                        <Slider label="Größe" value={size} onChange={setSize} min={10} max={200} />
-                        <Slider label="Dicke" value={thickness} onChange={setThickness} min={1} max={50} />
-                    </SliderGroup>
-
-                    <SliderGroup title="Rapport Grid" icon={Grid}>
-                        <Slider label="Zoom" value={scale} onChange={setScale} min={0.2} max={2.5} step={0.05} />
-                        <Slider label="Abstand X" value={gapX} onChange={setGapX} min={-50} max={150} />
-                        <Slider label="Abstand Y" value={gapY} onChange={setGapY} min={-50} max={150} />
-                        <Slider label="Rotation" value={rotation} onChange={setRotation} min={0} max={90} unit="°" />
-                    </SliderGroup>
-
-                    <SliderGroup title="Rhythmus & Wellen" icon={Activity}>
-                        <Slider label="Versatz (2. Zeile)" value={rowOffset} onChange={setRowOffset} min={-100} max={100} />
-                        <Slider label="Welle Amplitude" value={waveAmp} onChange={setWaveAmp} min={0} max={100} />
-                        <Slider label="Welle Frequenz" value={waveFreq} onChange={setWaveFreq} min={0.05} max={1.5} step={0.05} />
-                    </SliderGroup>
-
-                    <SliderGroup title="Verläufe & Dynamik" icon={TrendingUp}>
-                        <div className="bg-gradient-to-b from-blue-900/10 to-blue-900/30 p-2 rounded border border-blue-900/30">
-                            <p className="text-[9px] text-blue-300 mb-2 opacity-70">Vertikaler Verlauf</p>
-                            <Slider label="Skalierung" value={gradScaleY} onChange={setGradScaleY} min={-1.5} max={1.5} step={0.1} highlight={true} />
-                            <Slider label="Rotation" value={gradRotateY} onChange={setGradRotateY} min={-180} max={180} unit="°" highlight={true} />
+                        <div className="px-4 py-4 bg-gray-900/50 flex justify-center">
+                            <div className="w-full max-w-[200px] aspect-square rounded border border-gray-700 flex items-center justify-center relative overflow-hidden shadow-xl" style={{ background: bgStyle }}>
+                                <svg width="60" height="60" viewBox="-100 -100 200 200" className="drop-shadow-lg"><path d={previewPath} fill={fillColor} /></svg>
+                            </div>
                         </div>
-                    </SliderGroup>
-                    </div>
 
-                    <div className="p-4 mt-auto bg-gray-900 border-t border-gray-800">
-                    <button
-                        onClick={handleExport}
-                        className="w-full bg-white text-black hover:bg-gray-200 py-2 px-4 rounded font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                        <Download size={14} />
-                        SVG SPEICHERN
-                    </button>
-                    </div>
-                </aside>
+                        <div className="flex-grow px-4 py-2">
+                            <SliderGroup title="Farben & Hintergrund" icon={Palette}>
+                                <ColorPicker label="Start-Farbe" value={bgColor} onChange={setBgColor} />
+                                {useBgGradient && <ColorPicker label="End-Farbe" value={bgColor2} onChange={setBgColor2} />}
+                                <div className="flex items-center gap-2 mt-1 mb-1 h-6">
+                                    <label className="text-[10px] text-gray-400 w-24 shrink-0">Verlauf</label>
+                                    <div className="flex items-center gap-2"><input type="checkbox" checked={useBgGradient} onChange={(e) => setUseBgGradient(e.target.checked)} className="accent-blue-500 h-3 w-3" /><label className="text-[10px] text-gray-500 cursor-pointer">Aktivieren</label></div>
+                                </div>
+                                <div className="h-px bg-gray-800 my-1"></div>
+                                <ColorPicker label="Form Farbe" value={fillColor} onChange={setFillColor} />
+                            </SliderGroup>
 
-                {/* --- RECHTS: Darstellung --- */}
-                <main 
-                    ref={containerRef}
-                    className="flex-1 h-full relative overflow-hidden cursor-crosshair transition-colors duration-200"
-                    style={mainStyle}
-                >
-                    <svg 
-                        id="main-canvas"
-                        width="100%" 
-                        height="100%" 
-                        viewBox={mainViewBox}
-                        preserveAspectRatio="xMidYMid slice"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <defs>
-                            <path id="plus-shape" d={plusPath} />
-                        </defs>
+                            <SliderGroup title="Form Parameter" icon={Layers}>
+                                <Slider label="Größe" value={size} onChange={setSize} min={10} max={200} step={0.1} />
+                                <Slider label="Dicke" value={thickness} onChange={setThickness} min={1} max={50} step={0.1} />
+                            </SliderGroup>
 
-                        {renderConfig.useBgGradient ? (
-                            <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                                <stop offset="0%" stopColor={renderConfig.bgColor} />
-                                <stop offset="100%" stopColor={renderConfig.bgColor2} />
-                            </linearGradient>
-                        ) : null}
-                        
-                        <rect width="100%" height="100%" fill={renderConfig.useBgGradient ? "url(#bg-gradient)" : renderConfig.bgColor} />
-                        
-                        <g>
-                            {gridItems}
-                        </g>
-                    </svg>
-                    
-                    <div className="absolute top-4 right-4 pointer-events-none mix-blend-difference opacity-50">
-                        <div className="text-xs font-mono text-white">
-                            {renderConfig.dimensions.width} x {renderConfig.dimensions.height}px | Items: {gridItems.length}
+                            <SliderGroup title="Rapport Grid" icon={Grid}>
+                                <Slider label="Zoom" value={scale} onChange={setScale} min={0.2} max={2.5} step={0.01} />
+                                <Slider label="Abstand X" value={gapX} onChange={setGapX} min={-50} max={150} step={0.1} />
+                                <Slider label="Abstand Y" value={gapY} onChange={setGapY} min={-50} max={150} step={0.1} />
+                                <Slider label="Rotation" value={rotation} onChange={setRotation} min={0} max={90} unit="°" step={0.1} />
+                            </SliderGroup>
+
+                            <SliderGroup title="Rhythmus & Wellen" icon={Activity}>
+                                <Slider label="Versatz (2. Zeile)" value={rowOffset} onChange={setRowOffset} min={-100} max={100} step={0.1} />
+                                <Slider label="Welle Amplitude" value={waveAmp} onChange={setWaveAmp} min={0} max={100} step={0.1} />
+                                <Slider label="Welle Frequenz" value={waveFreq} onChange={setWaveFreq} min={0.05} max={1.5} step={0.01} />
+                            </SliderGroup>
+
+                            <SliderGroup title="Verläufe & Dynamik" icon={TrendingUp}>
+                                <div className="bg-gradient-to-b from-blue-900/10 to-blue-900/30 p-2 rounded border border-blue-900/30">
+                                    <p className="text-[9px] text-blue-300 mb-2 opacity-70">Vertikaler Verlauf</p>
+                                    <Slider label="Skalierung" value={gradScaleY} onChange={setGradScaleY} min={-1.5} max={1.5} step={0.01} highlight={true} />
+                                    <Slider label="Rotation" value={gradRotateY} onChange={setGradRotateY} min={-180} max={180} unit="°" step={0.1} highlight={true} />
+                                </div>
+                            </SliderGroup>
                         </div>
-                    </div>
-                </main>
 
+                        <div className="p-4 mt-auto bg-gray-900 border-t border-gray-800 flex items-center gap-3">
+                            <button onClick={handleExport} className="flex-grow bg-white text-black hover:bg-gray-200 py-2 px-4 rounded font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"><Download size={14} /> SVG SPEICHERN</button>
+                            <div className="flex items-center gap-2">
+                                <input type="checkbox" id="exportBgCheck" checked={exportBg} onChange={(e) => setExportBg(e.target.checked)} className="accent-blue-500 h-4 w-4 cursor-pointer" />
+                                <label htmlFor="exportBgCheck" className="text-[10px] text-gray-400 cursor-pointer select-none leading-tight w-16">Hintergrund exportieren</label>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <main ref={containerRef} className="flex-1 h-full relative overflow-hidden cursor-crosshair" style={{ background: bgStyle }}>
+                         <CanvasArea ref={svgRef} renderConfig={renderConfig} dimensions={dimensions} />
+                         <div className="absolute top-4 right-4 pointer-events-none mix-blend-difference opacity-50"><div className="text-xs font-mono text-white">{dimensions.width} x {dimensions.height}px</div></div>
+                    </main>
                 </div>
             );
         }
